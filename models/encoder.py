@@ -25,10 +25,10 @@ class EncoderLayer(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, vocab_size):
         super().__init__()
         self.pad = config.pad
-        self.embedding = Embeds(config.model_size, config.src_vocab_size, config)
+        self.embedding = Embeds(config.model_size, vocab_size, config)
         self.encoder = nn.ModuleList(
             [EncoderLayer(config)
              for i in range(config.n_layer)])

@@ -8,7 +8,8 @@ class Optim():
         self.warmup_steps = config.warmup_steps
         self.model_size = config.model_size
         self.steps = 0
-        self.init_lr = np.power(self.model_size, -0.5)
+        # self.init_lr = np.power(self.model_size, -0.5)
+        self.init_lr = config.lr
 
     def zero_grad(self):
         self.optimizer.zero_grad()

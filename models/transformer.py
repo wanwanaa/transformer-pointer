@@ -7,7 +7,7 @@ from models.decoder import Decoder
 class Transformer(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.encoder = Encoder(config)
+        self.encoder = Encoder(config, config.src_vocab_size)
         self.decoder = Decoder(config)
         self.bos = config.bos
         self.s_len = config.s_len

@@ -3,14 +3,13 @@ import torch
 import pickle
 from tqdm import tqdm
 from models.transformer import Transformer
-from models.autoencoder import AE
+from models.pointer import Transformer_Pointer
 from models.model import save_model, load_model
 from models.loss import LabelSmothingLoss
 from models.optimizer import Optim
 from utils.data import data_load, index2sentence
 from utils.config import Config
 from utils.rouge import rouge_score, write_rouge
-from pytorch_pretrained_bert import BertTokenizer
 
 
 def valid(epoch, config, model, loss_func):
@@ -29,12 +28,8 @@ def valid(epoch, config, model, loss_func):
             x = x.cuda()
             y = y.cuda()
         with torch.no_grad():
-            if config.bert:
-                output, final_output, _ = model.sample(x)
-                loss = loss_func(output, y) + loss_func(final_output, y)
-            else:
-                output, _ = model.sample(x)
-                loss = loss_func(output, y)
+            output, out = model.sample(x)
+            loss = loss_func(output, y)
         all_loss += loss.item()
     print('epoch:', epoch, '|valid_loss: %.4f' % (all_loss / num))
     return all_loss / num
@@ -58,35 +53,14 @@ def test(epoch, config, model, loss_func, tokenizer):
             x = x.cuda()
             y = y.cuda()
         with torch.no_grad():
-            if config.bert:
-                output, final_output, out = model.sample(x)
-                loss = loss_func(output, y) + loss_func(final_output, y)
-            else:
-                output, out = model.sample(x)
-                loss = loss_func(output, y)
+            output, out = model.sample(x)
+            loss = loss_func(output, y)
         all_loss += loss.item()
 
         # idx2word
-        if config.bert:
-            out = out.cpu().numpy()
-            for i in range(out.shape[0]):
-                t = []
-                for c in list(out[i]):
-                    if c == 102:
-                        break
-                    t.append(c)
-                if len(t) == 0:
-                    sen = []
-                    sen.append('[UNK]')
-                else:
-                    if len(t) == 1:
-                        t.append(config.unk)
-                    sen = tokenizer.convert_ids_to_tokens(t)
-                r.append(' '.join(sen))
-        else:
-            for i in range(out.shape[0]):
-                sen = index2sentence(list(out[i]), tokenizer)
-                r.append(' '.join(sen))
+        for i in range(out.shape[0]):
+            sen = index2sentence(list(out[i]), tokenizer)
+            r.append(' '.join(sen))
 
     print('epoch:', epoch, '|test_loss: %.4f' % (all_loss / num))
     # write result
@@ -115,10 +89,7 @@ def test(epoch, config, model, loss_func, tokenizer):
 
 
 def train(args, config, model):
-    if config.bert:
-        tokenizer = BertTokenizer.from_pretrained('data/bert/vocab.txt')
-    else:
-        tokenizer = pickle.load(open(config.filename_idx2word, 'rb'))
+    tokenizer = pickle.load(open(config.filename_idx2word, 'rb'))
     max_sorce = 0.0
     # optim
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-9)
@@ -137,8 +108,6 @@ def train(args, config, model):
         model.train()
         all_loss = 0
         num = 0
-        loss1 = 0
-        loss2 = 0
         for step, batch in enumerate(tqdm(train_loader)):
             x, y = batch
             word = y.ne(config.pad).sum().item()
@@ -146,38 +115,11 @@ def train(args, config, model):
             if torch.cuda.is_available():
                 x = x.cuda()
                 y = y.cuda()
-            if config.bert:
-                output, final_out = model(x, y)
-                loss1 = loss_func(output, y)
-                loss2 = loss_func(final_out, y)
-                loss = loss1 + loss2
-            else:
-                out = model(x, y)
-                loss = loss_func(out, y)
+            out = model(x, y)
+            loss = loss_func(out, y)
             all_loss += loss.item()
             if step % 200 == 0:
                 print('epoch:', e, '|step:', step, '|train_loss: %.4f' % (loss.item()/word))
-                # print('epoch:', e, '|step:', step, '|loss_1: %.4f' % (loss1.item()/word))
-                # print('epoch:', e, '|step:', step, '|loss_2: %.4f' % (loss2.item()/word))
-
-                # output = torch.nn.functional.softmax(output[-1], dim=-1)
-                # output = torch.argmax(output, dim=-1)
-                # final_out = torch.nn.functional.softmax(final_out[-1], dim=-1)
-                # final_out = torch.argmax(final_out, dim=-1)
-                # if torch.cuda.is_available():
-                #     output = output.cpu().numpy()
-                #     final_out = final_out.cpu().numpy()
-                #     y = y[-1].cpu().numpy()
-                # else:
-                #     output = output.numpy()
-                #     final_out = final_out.numpy()
-                #     y = y[-1].numpy()
-                # output = tokenizer.convert_ids_to_tokens(list(output))
-                # final_out = tokenizer.convert_ids_to_tokens(list(final_out))
-                # y = tokenizer.convert_ids_to_tokens(list(y))
-                # print(''.join(output))
-                # print(''.join(final_out))
-                # print(''.join(y))
 
             # loss regularization
             loss = loss / config.accumulation_steps
@@ -223,7 +165,7 @@ def main():
     args = parser.parse_args()
 
     ########test##########
-    # args.batch_size = 1
+    # args.batch_size = 2
     ########test##########
 
     if args.batch_size:
@@ -236,11 +178,7 @@ def main():
 
     # rouge initalization
     open(config.filename_rouge, 'w')
-
-    if config.bert:
-        model = AE(config)
-    else:
-        model = Transformer(config)
+    model = Transformer(config)
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
 

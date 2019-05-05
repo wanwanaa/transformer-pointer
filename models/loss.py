@@ -26,4 +26,7 @@ class LabelSmothingLoss(nn.Module):
         model_prob.masked_fill_((target == self.pad).unsqueeze(1), 0)
 
         output = torch.nn.functional.log_softmax(output, dim=-1)
+        # # pointer
+        # output = torch.log(output)
+
         return F.kl_div(output, model_prob, reduction='sum')
