@@ -1,2 +1,2 @@
 # transformer-pointer
-pointer-generanter
+pointer-generater
